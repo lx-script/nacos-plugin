@@ -34,7 +34,7 @@ public class HistoryConfigInfoMapperByOracle extends AbstractMapperByOracle impl
 
     @Override
     public MapperResult removeConfigHistory(MapperContext context) {
-        String sql = "DELETE FROM his_config_info WHERE ROWID in (SELECT ROWID FROM his_config_info WHERE gmt_modified < ? FETCH FIRST ? ROWS ONLY) ";
+        String sql = "DELETE FROM his_config_info WHERE id IN (SELECT id FROM (SELECT id FROM his_config_info WHERE gmt_modified < ? AND rownum <= ? ORDER BY id)) ";
         return new MapperResult(sql, CollectionUtils.list(context.getWhereParameter(FieldConstant.START_TIME),
                 context.getWhereParameter(FieldConstant.LIMIT_SIZE)));
     }
@@ -42,12 +42,17 @@ public class HistoryConfigInfoMapperByOracle extends AbstractMapperByOracle impl
     @Override
     public MapperResult pageFindConfigHistoryFetchRows(MapperContext context) {
         String sql =
-                "SELECT nid,data_id,group_id,tenant_id,app_name,src_ip,src_user,op_type,gmt_create,gmt_modified FROM his_config_info "
-                        + " WHERE data_id = ? AND group_id = ? AND  tenant_id =  ? "
-                        + " ORDER BY nid DESC OFFSET " + context.getStartRow() + " ROWS FETCH NEXT " + context
-                        .getPageSize() + " ROWS ONLY ";
-        return new MapperResult(sql, CollectionUtils.list(context.getWhereParameter(FieldConstant.DATA_ID),
-                context.getWhereParameter(FieldConstant.GROUP_ID), context.getWhereParameter(FieldConstant.TENANT_ID)));
+                "SELECT nid,data_id,group_id,tenant_id,app_name,src_ip,src_user,op_type,gmt_create,gmt_modified FROM ( "
+                        + "SELECT nid,data_id,group_id,tenant_id,app_name,src_ip,src_user,op_type,gmt_create,gmt_modified,ROWNUM rn FROM ( "
+                        + "SELECT nid,data_id,group_id,tenant_id,app_name,src_ip,src_user,op_type,gmt_create,gmt_modified FROM his_config_info "
+                        + "WHERE data_id = ? AND group_id = ? AND tenant_id = ? "
+                        + "ORDER BY nid DESC ) WHERE ROWNUM <= ? ) WHERE rn > ?";
+        return new MapperResult(sql, CollectionUtils.list(
+                context.getWhereParameter(FieldConstant.DATA_ID),
+                context.getWhereParameter(FieldConstant.GROUP_ID),
+                context.getWhereParameter(FieldConstant.TENANT_ID),
+                context.getWhereParameter(FieldConstant.PAGE_SIZE),
+                context.getWhereParameter(FieldConstant.START_ROW)));
     }
     
     @Override

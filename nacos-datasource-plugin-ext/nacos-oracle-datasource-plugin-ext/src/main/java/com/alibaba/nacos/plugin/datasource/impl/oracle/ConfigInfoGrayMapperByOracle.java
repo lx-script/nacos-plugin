@@ -34,8 +34,8 @@ public class ConfigInfoGrayMapperByOracle extends AbstractMapperByOracle impleme
     @Override
     public MapperResult findAllConfigInfoGrayForDumpAllFetchRows(MapperContext context) {
         String sql = "SELECT id,data_id,group_id,tenant_id,gray_name,gray_rule,app_name,content,md5,gmt_modified "
-                + "FROM config_info_gray ORDER BY id OFFSET " + context.getStartRow() + " ROWS FETCH NEXT " + context.getPageSize() + " ROWS ONLY";
-        return new MapperResult(sql, Collections.emptyList());
+                + "FROM config_info_gray WHERE id > ? ORDER BY id ASC";
+        return new MapperResult(sql, Collections.singletonList(context.getStartRow()));
     }
     
     @Override

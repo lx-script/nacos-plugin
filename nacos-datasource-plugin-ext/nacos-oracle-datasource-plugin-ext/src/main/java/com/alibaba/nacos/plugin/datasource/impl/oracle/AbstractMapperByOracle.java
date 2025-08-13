@@ -16,7 +16,7 @@
 
 package com.alibaba.nacos.plugin.datasource.impl.oracle;
 
-import com.alibaba.nacos.plugin.datasource.enums.mysql.TrustedMysqlFunctionEnum;
+import com.alibaba.nacos.plugin.datasource.enums.TrustedOracleFunctionEnum;
 import com.alibaba.nacos.plugin.datasource.mapper.AbstractMapper;
 
 /**
@@ -28,6 +28,6 @@ public abstract class AbstractMapperByOracle extends AbstractMapper {
 
     @Override
     public String getFunction(String functionName) {
-        return TrustedMysqlFunctionEnum.getFunctionByName(functionName);
+        return TrustedOracleFunctionEnum.getFunctionByName(functionName);
     }
 }

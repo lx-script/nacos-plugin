@@ -98,34 +98,60 @@ public class ConfigTagsRelationMapperByOracle extends AbstractMapperByOracle imp
         final String[] tagArr = (String[]) context.getWhereParameter(FieldConstant.TAG_ARR);
         final String[] types = (String[]) context.getWhereParameter(FieldConstant.TYPE);
         
-        WhereBuilder where = new WhereBuilder(
+        List<Object> paramList = new ArrayList<>();
+        StringBuilder where = new StringBuilder(" WHERE ");
+        final String sql =
                 "SELECT a.id,a.data_id,a.group_id,a.tenant_id,a.app_name,a.content,a.type "
-                        + "FROM config_info a LEFT JOIN config_tags_relation b ON a.id=b.id");
-        
-        where.like("a.tenant_id", tenant);
-        
+                        + "FROM config_info a LEFT JOIN config_tags_relation b ON a.id=b.id";
+
+        where.append(" a.tenant_id LIKE ? ");
+        paramList.add(tenant);
+
         if (StringUtils.isNotBlank(dataId)) {
-            where.and().like("a.data_id", dataId);
+            where.append(" AND a.data_id LIKE ? ");
+            paramList.add(dataId);
         }
         if (StringUtils.isNotBlank(group)) {
-            where.and().like("a.group_id", group);
+            where.append(" AND a.group_id LIKE ? ");
+            paramList.add(group);
         }
         if (StringUtils.isNotBlank(appName)) {
-            where.and().eq("a.app_name", appName);
+            where.append(" AND a.app_name = ? ");
+            paramList.add(appName);
         }
         if (StringUtils.isNotBlank(content)) {
-            where.and().like("a.content", content);
+            where.append(" AND a.content LIKE ? ");
+            paramList.add(content);
         }
         if (!ArrayUtils.isEmpty(tagArr)) {
-            where.and().in("b.tag_name", tagArr);
+            where.append(" AND b.tag_name IN (");
+            for (int i = 0; i < tagArr.length; i++) {
+                if (i != 0) {
+                    where.append(", ");
+                }
+                where.append('?');
+                paramList.add(tagArr[i]);
+            }
+            where.append(") ");
         }
         if (!ArrayUtils.isEmpty(types)) {
-            where.and().in("a.type", types);
+            where.append(" AND a.type IN (");
+            for (int i = 0; i < types.length; i++) {
+                if (i != 0) {
+                    where.append(", ");
+                }
+                where.append('?');
+                paramList.add(types[i]);
+            }
+            where.append(") ");
         }
-        
-        where.offset(context.getStartRow(), context.getPageSize());
-        
-        return where.build();
+
+        // Oracle 11g 分页使用ROWNUM方式
+        String limitSql = "SELECT * FROM (SELECT ROWNUM rn, t.* FROM (" + sql + where
+                + ") t WHERE ROWNUM <= " + (context.getStartRow() + context.getPageSize())
+                + ") WHERE rn > " + context.getStartRow();
+
+        return new MapperResult(limitSql, paramList);
     }
     
     @Override

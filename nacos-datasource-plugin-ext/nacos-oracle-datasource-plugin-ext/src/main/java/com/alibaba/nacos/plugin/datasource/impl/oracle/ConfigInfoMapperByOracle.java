@@ -55,39 +55,43 @@ public class ConfigInfoMapperByOracle extends AbstractMapperByOracle implements 
     public MapperResult findConfigInfoByAppFetchRows(MapperContext context) {
         final String appName = (String) context.getWhereParameter(FieldConstant.APP_NAME);
         final String tenantId = (String) context.getWhereParameter(FieldConstant.TENANT_ID);
-        String sql = "SELECT id,data_id,group_id,tenant_id,app_name,content FROM config_info"
-                + " WHERE tenant_id LIKE ? AND app_name= ? AND ROWNUM BETWEEN " + context.getStartRow() + " AND "
-                + (context.getStartRow() + context.getPageSize());
+        String sql = "SELECT id,data_id,group_id,tenant_id,app_name,content FROM ("
+                + "SELECT id,data_id,group_id,tenant_id,app_name,content,ROWNUM rn FROM config_info"
+                + " WHERE tenant_id LIKE ? AND app_name= ? AND ROWNUM <= " + (context.getStartRow() + context.getPageSize())
+                + ") WHERE rn > " + context.getStartRow();
         return new MapperResult(sql, CollectionUtils.list(tenantId, appName));
     }
     
     @Override
     public MapperResult getTenantIdList(MapperContext context) {
-        String sql = "SELECT tenant_id FROM config_info WHERE tenant_id != '" + NamespaceUtil.getNamespaceDefaultId()
-                + "' GROUP BY tenant_id OFFSET " + context.getStartRow() + " ROWS FETCH NEXT " + context.getPageSize() + " ROWS ONLY";
+        String sql = "SELECT tenant_id FROM (SELECT tenant_id, ROWNUM rn FROM (SELECT tenant_id FROM config_info WHERE tenant_id != '" 
+                + NamespaceUtil.getNamespaceDefaultId() + "' GROUP BY tenant_id) WHERE ROWNUM <= " 
+                + (context.getStartRow() + context.getPageSize()) + ") WHERE rn > " + context.getStartRow();
         return new MapperResult(sql, Collections.emptyList());
     }
     
     @Override
     public MapperResult getGroupIdList(MapperContext context) {
-        String sql = "SELECT group_id FROM config_info WHERE tenant_id ='" + NamespaceUtil.getNamespaceDefaultId()
-                + "' GROUP BY group_id OFFSET " + context.getStartRow() + " ROWS FETCH NEXT " + context.getPageSize() + " ROWS ONLY";
+        String sql = "SELECT group_id FROM (SELECT group_id, ROWNUM rn FROM (SELECT group_id FROM config_info WHERE tenant_id = '" 
+                + NamespaceUtil.getNamespaceDefaultId() + "' GROUP BY group_id) WHERE ROWNUM <= " 
+                + (context.getStartRow() + context.getPageSize()) + ") WHERE rn > " + context.getStartRow();
         return new MapperResult(sql, Collections.emptyList());
     }
     
     @Override
     public MapperResult findAllConfigKey(MapperContext context) {
         String sql = "SELECT data_id,group_id,app_name FROM ("
-                + "SELECT id FROM config_info WHERE tenant_id LIKE ? ORDER BY id OFFSET " + context.getStartRow() + " ROWS FETCH NEXT "
-                + context.getPageSize() + " ROWS ONLY) g, config_info t WHERE g.id = t.id";
+                + "SELECT id, ROWNUM rn FROM (SELECT id FROM config_info WHERE tenant_id LIKE ? ORDER BY id) WHERE ROWNUM <= " 
+                + (context.getStartRow() + context.getPageSize()) + ") g, config_info t WHERE g.id = t.id AND g.rn > " 
+                + context.getStartRow();
         return new MapperResult(sql, CollectionUtils.list(context.getWhereParameter(FieldConstant.TENANT_ID)));
     }
     
     @Override
     public MapperResult findAllConfigInfoBaseFetchRows(MapperContext context) {
         String sql = "SELECT t.id,data_id,group_id,content,md5" +
-                " FROM ( SELECT id FROM config_info ORDER BY id OFFSET " + context.getStartRow() + " ROWS FETCH NEXT " + context.getPageSize() + " ROWS ONLY )" +
-                " g, config_info t  WHERE g.id = t.id ";
+                " FROM (SELECT id, ROWNUM rn FROM (SELECT id FROM config_info ORDER BY id) WHERE ROWNUM <= " + (context.getStartRow() + context.getPageSize()) + ")" +
+                " g, config_info t  WHERE g.id = t.id AND g.rn > " + context.getStartRow();
         return new MapperResult(sql, Collections.emptyList());
     }
     
@@ -96,8 +100,10 @@ public class ConfigInfoMapperByOracle extends AbstractMapperByOracle implements 
         String contextParameter = context.getContextParameter(ContextConstant.NEED_CONTENT);
         boolean needContent = contextParameter != null && Boolean.parseBoolean(contextParameter);
         String sql = "SELECT id,data_id,group_id,tenant_id,app_name," + (needContent ? "content," : "")
-                + "md5,gmt_modified,type,encrypted_data_key FROM config_info WHERE id > ? ORDER BY id ASC OFFSET "
-                + context.getStartRow() + " ROWS FETCH NEXT " + context.getPageSize() + " ROWS ONLY";
+                + "md5,gmt_modified,type,encrypted_data_key FROM ("
+                + "SELECT id,data_id,group_id,tenant_id,app_name," + (needContent ? "content," : "")
+                + "md5,gmt_modified,type,encrypted_data_key, ROWNUM rn FROM config_info WHERE id > ? AND ROWNUM <= " 
+                + (context.getStartRow() + context.getPageSize()) + " ORDER BY id ASC) WHERE rn > " + context.getStartRow();
         return new MapperResult(sql, CollectionUtils.list(context.getWhereParameter(FieldConstant.ID)));
     }
     
@@ -113,7 +119,8 @@ public class ConfigInfoMapperByOracle extends AbstractMapperByOracle implements 
         
         List<Object> paramList = new ArrayList<>();
         
-        final String sqlFetchRows = "SELECT id,data_id,group_id,tenant_id,app_name,type,md5,gmt_modified FROM config_info WHERE ";
+        final String sqlFetchRows = "SELECT id,data_id,group_id,tenant_id,app_name,type,md5,gmt_modified FROM ("
+                + "SELECT id,data_id,group_id,tenant_id,app_name,type,md5,gmt_modified,ROWNUM rn FROM config_info WHERE ";
         String where = " 1=1 ";
         if (!StringUtils.isBlank(dataId)) {
             where += " AND data_id LIKE ? ";
@@ -143,14 +150,15 @@ public class ConfigInfoMapperByOracle extends AbstractMapperByOracle implements 
         }
         return new MapperResult(
                 sqlFetchRows + where + " AND id > " + context.getWhereParameter(FieldConstant.LAST_MAX_ID)
-                        + " ORDER BY id ASC OFFSET " + 0 + " ROWS FETCH NEXT " + context.getPageSize() + " ROWS ONLY", paramList);
+                        + " AND ROWNUM <= " + context.getPageSize() + ") WHERE rn > 0", paramList);
     }
     
     @Override
     public MapperResult listGroupKeyMd5ByPageFetchRows(MapperContext context) {
         String sql = "SELECT t.id,data_id,group_id,tenant_id,app_name,md5,type,gmt_modified,encrypted_data_key FROM "
-                + "( SELECT id FROM config_info ORDER BY id OFFSET " + context.getStartRow() + " ROWS FETCH NEXT "
-                + context.getPageSize() + " ROWS ONLY ) g, config_info t WHERE g.id = t.id";
+                + "( SELECT id, ROWNUM rn FROM (SELECT id FROM config_info ORDER BY id) WHERE ROWNUM <= " 
+                + (context.getStartRow() + context.getPageSize()) + ") g, config_info t WHERE g.id = t.id AND g.rn > " 
+                + context.getStartRow();
         return new MapperResult(sql, Collections.emptyList());
     }
     
@@ -160,25 +168,27 @@ public class ConfigInfoMapperByOracle extends AbstractMapperByOracle implements 
         final String group = (String) context.getWhereParameter(FieldConstant.GROUP_ID);
         final String content = (String) context.getWhereParameter(FieldConstant.CONTENT);
         
-        final String sqlFetchRows = "SELECT id,data_id,group_id,tenant_id,content FROM config_info WHERE ";
+        final String sqlFetchRows = "SELECT id,data_id,group_id,tenant_id,content FROM ("
+                + "SELECT id,data_id,group_id,tenant_id,content,ROWNUM rn FROM config_info WHERE ";
         String where = " 1=1 AND tenant_id='" + NamespaceUtil.getNamespaceDefaultId() + "' ";
-        
+
         List<Object> paramList = new ArrayList<>();
-        
+
         if (!StringUtils.isBlank(dataId)) {
             where += " AND data_id LIKE ? ";
             paramList.add(dataId);
         }
         if (!StringUtils.isBlank(group)) {
-            where += " AND group_id LIKE ";
+            where += " AND group_id LIKE ? ";
             paramList.add(group);
         }
         if (!StringUtils.isBlank(content)) {
             where += " AND content LIKE ? ";
             paramList.add(content);
         }
-        return new MapperResult(sqlFetchRows + where + " AND ROWNUM BETWEEN " + context.getStartRow() + " AND "
-                + (context.getStartRow() + context.getPageSize()), paramList);
+        String sql = sqlFetchRows + where + " AND ROWNUM <= " + (context.getStartRow() + context.getPageSize())
+                + ") WHERE rn > " + context.getStartRow();
+        return new MapperResult(sql, paramList);
     }
     
     @Override
@@ -191,7 +201,8 @@ public class ConfigInfoMapperByOracle extends AbstractMapperByOracle implements 
         
         List<Object> paramList = new ArrayList<>();
         
-        final String sql = "SELECT id,data_id,group_id,tenant_id,app_name,content,type,encrypted_data_key FROM config_info";
+        final String sql = "SELECT id,data_id,group_id,tenant_id,app_name,content,type,encrypted_data_key FROM ("
+                + "SELECT id,data_id,group_id,tenant_id,app_name,content,type,encrypted_data_key,ROWNUM rn FROM config_info";
         StringBuilder where = new StringBuilder(" WHERE ");
         where.append(" tenant_id=? ");
         paramList.add(tenant);
@@ -211,14 +222,16 @@ public class ConfigInfoMapperByOracle extends AbstractMapperByOracle implements 
             where.append(" AND content LIKE ? ");
             paramList.add(content);
         }
-        return new MapperResult(sql + where + " OFFSET " + context.getStartRow() + " ROWS FETCH NEXT " + context.getPageSize() + " ROWS ONLY",
-                paramList);
+        String finalSql = sql + where.toString() + " AND ROWNUM <= " + (context.getStartRow() + context.getPageSize())
+                + ") WHERE rn > " + context.getStartRow();
+        return new MapperResult(finalSql, paramList);
     }
     
     @Override
     public MapperResult findConfigInfoBaseByGroupFetchRows(MapperContext context) {
-        String sql = "SELECT id,data_id,group_id,content FROM config_info WHERE group_id=? AND tenant_id=?"
-                + " OFFSET " + context.getStartRow() + " ROWS FETCH NEXT " + context.getPageSize() + " ROWS ONLY";
+        String sql = "SELECT id,data_id,group_id,content FROM ("
+                + "SELECT id,data_id,group_id,content,ROWNUM rn FROM config_info WHERE group_id=? AND tenant_id=? AND ROWNUM <= " 
+                + (context.getStartRow() + context.getPageSize()) + ") WHERE rn > " + context.getStartRow();
         return new MapperResult(sql, CollectionUtils.list(context.getWhereParameter(FieldConstant.GROUP_ID),
                 context.getWhereParameter(FieldConstant.TENANT_ID)));
     }
@@ -232,37 +245,57 @@ public class ConfigInfoMapperByOracle extends AbstractMapperByOracle implements 
         final String content = (String) context.getWhereParameter(FieldConstant.CONTENT);
         final String[] types = (String[]) context.getWhereParameter(FieldConstant.TYPE);
         
-        WhereBuilder where = new WhereBuilder(
-                "SELECT id,data_id,group_id,tenant_id,app_name,content,encrypted_data_key,type FROM config_info");
-        where.like("tenant_id", tenant);
+        StringBuilder sql = new StringBuilder(
+                "SELECT id,data_id,group_id,tenant_id,app_name,content,encrypted_data_key,type FROM (");
+        sql.append("SELECT id,data_id,group_id,tenant_id,app_name,content,encrypted_data_key,type,ROWNUM rn FROM config_info WHERE ");
+
+        List<Object> paramList = new ArrayList<>();
+        
+        sql.append("tenant_id LIKE ? ");
+        paramList.add(tenant);
         
         if (StringUtils.isNotBlank(dataId)) {
-            where.and().like("data_id", dataId);
+            sql.append("AND data_id LIKE ? ");
+            paramList.add(dataId);
         }
         if (StringUtils.isNotBlank(group)) {
-            where.and().like("group_id", group);
+            sql.append("AND group_id LIKE ? ");
+            paramList.add(group);
         }
         if (StringUtils.isNotBlank(appName)) {
-            where.and().eq("app_name", appName);
+            sql.append("AND app_name = ? ");
+            paramList.add(appName);
         }
         if (StringUtils.isNotBlank(content)) {
-            where.and().like("content", content);
+            sql.append("AND content LIKE ? ");
+            paramList.add(content);
         }
         if (!ArrayUtils.isEmpty(types)) {
-            where.and().in("type", types);
+            sql.append("AND type IN (");
+            for (int i = 0; i < types.length; i++) {
+                sql.append("?");
+                if (i < types.length - 1) {
+                    sql.append(",");
+                }
+                paramList.add(types[i]);
+            }
+            sql.append(") ");
         }
-        where.offset(context.getStartRow(), context.getPageSize());
-        return where.build();
+        
+        sql.append("AND ROWNUM <= ").append(context.getStartRow() + context.getPageSize())
+                .append(") WHERE rn > ").append(context.getStartRow());
+                
+        return new MapperResult(sql.toString(), paramList);
     }
     
     @Override
     public MapperResult findAllConfigInfoFetchRows(MapperContext context) {
         String sql = "SELECT t.id,data_id,group_id,tenant_id,app_name,content,md5 "
-                + " FROM (  SELECT id FROM config_info WHERE tenant_id LIKE ? ORDER BY id OFFSET ? ROWS FETCH NEXT ? ROWS ONLY )"
-                + " g, config_info t  WHERE g.id = t.id ";
+                + " FROM (SELECT id, ROWNUM rn FROM (SELECT id FROM config_info WHERE tenant_id LIKE ? ORDER BY id) WHERE ROWNUM <= ?) g, config_info t "
+                + " WHERE g.id = t.id AND g.rn > ?";
         return new MapperResult(sql,
-                CollectionUtils.list(context.getWhereParameter(FieldConstant.TENANT_ID), context.getStartRow(),
-                        context.getPageSize()));
+                CollectionUtils.list(context.getWhereParameter(FieldConstant.TENANT_ID), 
+                        context.getStartRow() + context.getPageSize(), context.getStartRow()));
     }
     
     @Override
