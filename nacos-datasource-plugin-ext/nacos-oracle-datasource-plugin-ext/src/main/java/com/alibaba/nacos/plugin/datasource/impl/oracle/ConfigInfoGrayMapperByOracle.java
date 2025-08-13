@@ -17,34 +17,27 @@
 package com.alibaba.nacos.plugin.datasource.impl.oracle;
 
 import com.alibaba.nacos.plugin.datasource.constants.DataSourceConstant_oracle;
-import com.alibaba.nacos.plugin.datasource.mapper.ConfigInfoBetaMapper;
+import com.alibaba.nacos.plugin.datasource.mapper.ConfigInfoGrayMapper;
 import com.alibaba.nacos.plugin.datasource.model.MapperContext;
 import com.alibaba.nacos.plugin.datasource.model.MapperResult;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Collections;
 
 /**
- * The mysql implementation of ConfigInfoBetaMapper.
+ * The mysql implementation of ConfigInfoGrayMapper.
  *
- * @author hyx
+ * @author rong
  **/
 
-public class ConfigInfoBetaMapperByOracle extends AbstractMapperByOracle implements ConfigInfoBetaMapper {
-
+public class ConfigInfoGrayMapperByOracle extends AbstractMapperByOracle implements ConfigInfoGrayMapper {
+    
     @Override
-    public MapperResult findAllConfigInfoBetaForDumpAllFetchRows(MapperContext context) {
-        int startRow = context.getStartRow();
-        int pageSize = context.getPageSize();
-        String sql = "SELECT t.id,data_id,group_id,tenant_id,app_name,content,md5,gmt_modified,beta_ips,encrypted_data_key "
-                + "FROM (SELECT id FROM config_info_beta ORDER BY id OFFSET ? ROWS FETCH NEXT ? ROWS ONLY) g, config_info_beta t "
-                + "WHERE g.id = t.id";
-        List<Object> paramList = new ArrayList<>();
-        paramList.add(startRow);
-        paramList.add(pageSize);
-        return new MapperResult(sql, paramList);
+    public MapperResult findAllConfigInfoGrayForDumpAllFetchRows(MapperContext context) {
+        String sql = "SELECT id,data_id,group_id,tenant_id,gray_name,gray_rule,app_name,content,md5,gmt_modified "
+                + "FROM config_info_gray ORDER BY id OFFSET " + context.getStartRow() + " ROWS FETCH NEXT " + context.getPageSize() + " ROWS ONLY";
+        return new MapperResult(sql, Collections.emptyList());
     }
-
+    
     @Override
     public String getDataSource() {
         return DataSourceConstant_oracle.ORACLE;
